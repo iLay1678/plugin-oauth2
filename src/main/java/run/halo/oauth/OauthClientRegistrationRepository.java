@@ -110,17 +110,28 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
             .switchIfEmpty(Mono.error(new NotFoundException(
                 "Oauth2 client registration " + registrationId + " not found")
             ))
-            .map(oauth2ClientRegistration -> clientRegistrationBuilder(
-                oauth2ClientRegistration)
-                .clientId(ssoClientConf.clientId())
-                .clientSecret(ssoClientConf.clientSecret())
-                .authorizationUri(ssoClientConf.authorizationUrl())
-                .tokenUri(ssoClientConf.tokenUrl())
-                .userInfoUri(ssoClientConf.userInfoUrl())
-                .scope(ssoClientConf.scopes())
-                .userNameAttributeName(ssoClientConf.userNameAttribute())
-                .build()
-            );
+            .map(oauth2ClientRegistration -> {
+                    ClientRegistration.Builder builder = clientRegistrationBuilder(oauth2ClientRegistration)
+                            .clientId(ssoClientConf.clientId())
+                            .clientSecret(ssoClientConf.clientSecret())
+                            .authorizationUri(ssoClientConf.authorizationUrl())
+                            .tokenUri(ssoClientConf.tokenUrl())
+                            .userInfoUri(ssoClientConf.userInfoUrl())
+                            .userNameAttributeName(ssoClientConf.userNameAttribute());
+
+                    String scopesStr = ssoClientConf.scopes(); // e.g. "openid profile" or "openid,profile"
+                    if (!StringUtils.isBlank(scopesStr)) {
+                        Set<String> scopes = Arrays.stream(scopesStr.split("\\s+|,\\s*"))
+                                .map(String::trim)
+                                .filter(s -> !s.isEmpty())
+                                .collect(Collectors.toSet());
+                        if (!scopes.isEmpty()) {
+                            builder = builder.scope(scopes); // 一次性设置所有 scope
+                        }
+                    }
+
+                    return builder.build();
+            });
     }
 
     record GenericClientConf(String clientId, String clientSecret) {
