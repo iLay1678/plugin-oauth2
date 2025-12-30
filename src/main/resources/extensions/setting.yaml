@@ -60,3 +60,11 @@ spec:
           label: "UserName Attribute"
           validation: required:trim
           value: "name"
+        - $formkit: text
+          name: issuerUri
+          label: "Issuer URI"
+          help: "The Issuer Identifier of the OpenID Connect Provider."
+        - $formkit: text
+          name: jwkSetUri
+          label: "JWK Set URI"
+          help: "The URL to the JWK Set (KEYS) of the OpenID Connect Provider."

@@ -2,6 +2,7 @@ package run.halo.oauth;
 
 import static org.apache.commons.lang3.ObjectUtils.defaultIfNull;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,19 +45,19 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
     @Override
     public Mono<ClientRegistration> findByRegistrationId(String registrationId) {
         return client.fetch(AuthProvider.class, registrationId)
-            .switchIfEmpty(
-                Mono.error(new ProviderNotFoundException(
-                    "Unsupported OAuth2 provider: " + registrationId)))
-            .flatMap(provider -> fetchEnabledProviders()
-                .doOnNext(enabledNames -> {
-                    if (!enabledNames.contains(registrationId)) {
-                        throw new OAuth2AuthenticationException(
-                            "Authentication provider is not enabled: " + registrationId);
-                    }
-                })
+                .switchIfEmpty(
+                        Mono.error(new ProviderNotFoundException(
+                                "Unsupported OAuth2 provider: " + registrationId)))
+                .flatMap(provider -> fetchEnabledProviders()
+                        .doOnNext(enabledNames -> {
+                            if (!enabledNames.contains(registrationId)) {
+                                throw new OAuth2AuthenticationException(
+                                        "Authentication provider is not enabled: " + registrationId);
+                            }
+                        })
                 .thenReturn(provider)
             )
-            .flatMap(this::getClientRegistrationMono);
+                .flatMap(this::getClientRegistrationMono);
     }
 
     private Mono<ClientRegistration> getClientRegistrationMono(AuthProvider authProvider) {
@@ -65,22 +66,22 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
         final String group = authProvider.getSpec().getSettingRef().getGroup();
         final String name = authProvider.getMetadata().getName();
         return client.fetch(ConfigMap.class, configMapKeyRef.getName())
-            .map(ConfigMap::getData)
-            .switchIfEmpty(
-                Mono.error(new IllegalArgumentException(
+                .map(ConfigMap::getData)
+                .switchIfEmpty(
+                        Mono.error(new IllegalArgumentException(
                     "ConfigMap " + configMapKeyRef.getName() + " not found")
                 )
             )
-            .flatMap(data -> {
-                String value = data.getOrDefault(group, "{}");
+                .flatMap(data -> {
+                    String value = data.getOrDefault(group, "{}");
                 if(SSO_PROVIDER_NAME.equals(name)) {
-                    SsoClientConf ssoClientConf = JsonUtils.jsonToObject(value, SsoClientConf.class);
-                    return SsoClientRegistration(ssoClientConf, authProvider);
-                }
+                        SsoClientConf ssoClientConf = JsonUtils.jsonToObject(value, SsoClientConf.class);
+                        return SsoClientRegistration(ssoClientConf, authProvider);
+                    }
 
-                GenericClientConf genericClientConf = JsonUtils.jsonToObject(value, GenericClientConf.class);
-                return GenericClientRegistration(genericClientConf, authProvider);
-            });
+                    GenericClientConf genericClientConf = JsonUtils.jsonToObject(value, GenericClientConf.class);
+                    return GenericClientRegistration(genericClientConf, authProvider);
+                });
     }
 
     private Mono<ClientRegistration> GenericClientRegistration(GenericClientConf genericClientConf, AuthProvider authProvider) {
@@ -89,17 +90,17 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
         }
         if (StringUtils.isBlank(genericClientConf.clientSecret())) {
             return Mono.error(
-                new IllegalArgumentException("clientSecret must not be blank"));
+                    new IllegalArgumentException("clientSecret must not be blank"));
         }
         String registrationId = authProvider.getMetadata().getName();
         return client.fetch(Oauth2ClientRegistration.class, registrationId)
-            .switchIfEmpty(Mono.error(new NotFoundException(
+                .switchIfEmpty(Mono.error(new NotFoundException(
                 "Oauth2 client registration " + registrationId + " not found")
             ))
-            .map(oauth2ClientRegistration -> clientRegistrationBuilder(
-                oauth2ClientRegistration)
-                .clientId(genericClientConf.clientId())
-                .clientSecret(genericClientConf.clientSecret())
+                .map(oauth2ClientRegistration -> clientRegistrationBuilder(
+                        oauth2ClientRegistration)
+                        .clientId(genericClientConf.clientId())
+                        .clientSecret(genericClientConf.clientSecret())
                 .build()
             );
     }
@@ -107,17 +108,19 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
     private Mono<ClientRegistration> SsoClientRegistration(SsoClientConf ssoClientConf, AuthProvider authProvider) {
         String registrationId = authProvider.getMetadata().getName();
         return client.fetch(Oauth2ClientRegistration.class, registrationId)
-            .switchIfEmpty(Mono.error(new NotFoundException(
+                .switchIfEmpty(Mono.error(new NotFoundException(
                 "Oauth2 client registration " + registrationId + " not found")
             ))
-            .map(oauth2ClientRegistration -> {
+                .map(oauth2ClientRegistration -> {
                     ClientRegistration.Builder builder = clientRegistrationBuilder(oauth2ClientRegistration)
                             .clientId(ssoClientConf.clientId())
                             .clientSecret(ssoClientConf.clientSecret())
                             .authorizationUri(ssoClientConf.authorizationUrl())
                             .tokenUri(ssoClientConf.tokenUrl())
                             .userInfoUri(ssoClientConf.userInfoUrl())
-                            .userNameAttributeName(ssoClientConf.userNameAttribute());
+                            .userNameAttributeName(ssoClientConf.userNameAttribute())
+                            .issuerUri(ssoClientConf.issuerUri())
+                            .jwkSetUri(ssoClientConf.jwkSetUri());
 
                     String scopesStr = ssoClientConf.scopes(); // e.g. "openid profile" or "openid,profile"
                     if (!StringUtils.isBlank(scopesStr)) {
@@ -131,7 +134,7 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
                     }
 
                     return builder.build();
-            });
+                });
     }
 
     record GenericClientConf(String clientId, String clientSecret) {
@@ -146,8 +149,8 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
     }
 
     record SsoClientConf(String clientId, String clientSecret, String authorizationUrl,
-                         String tokenUrl, String userInfoUrl, String scopes,
-                         String userNameAttribute) {
+            String tokenUrl, String userInfoUrl, String scopes,
+            String userNameAttribute, String issuerUri, String jwkSetUri) {
         SsoClientConf {
             if (StringUtils.isBlank(clientId)) {
                 throw new IllegalArgumentException("clientId must not be blank");
@@ -197,7 +200,7 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
     ClientRegistration.Builder clientRegistrationBuilder(Oauth2ClientRegistration registration) {
         if (registration == null) {
             throw new IllegalArgumentException(
-                "The clientRegistration in AuthProvider must not be null");
+                    "The clientRegistration in AuthProvider must not be null");
         }
         Oauth2ClientRegistration.Oauth2ClientRegistrationSpec spec = registration.getSpec();
         var redirectUri = defaultIfNull(spec.getRedirectUri(), DEFAULT_REDIRECT_URL);
@@ -205,44 +208,44 @@ public class OauthClientRegistrationRepository implements ReactiveClientRegistra
         if (externalUrl != null) {
             // rewrite redirect URI if external Url is configured.
             redirectUri = UriComponentsBuilder.fromUriString(redirectUri)
-                .uriVariables(Map.of("baseUrl", StringUtils.removeEnd(externalUrl.toString(), "/")))
-                .build()
-                .toString();
+                    .uriVariables(Map.of("baseUrl", StringUtils.removeEnd(externalUrl.toString(), "/")))
+                    .build()
+                    .toString();
         }
         return ClientRegistration.withRegistrationId(registration.getMetadata().getName())
-            .clientName(spec.getClientName())
-            .clientAuthenticationMethod(
+                .clientName(spec.getClientName())
+                .clientAuthenticationMethod(
                 toClientAuthenticationMethod(spec.getClientAuthenticationMethod())
             )
-            .authorizationGrantType(
+                .authorizationGrantType(
                 toAuthorizationGrantType(spec.getAuthorizationGrantType())
             )
-            .authorizationUri(spec.getAuthorizationUri())
-            .issuerUri(spec.getIssuerUri())
-            .jwkSetUri(spec.getJwkSetUri())
-            .redirectUri(redirectUri)
-            .scope(spec.getScopes())
-            .tokenUri(spec.getTokenUri())
-            .userInfoAuthenticationMethod(
+                .authorizationUri(spec.getAuthorizationUri())
+                .issuerUri(spec.getIssuerUri())
+                .jwkSetUri(spec.getJwkSetUri())
+                .redirectUri(redirectUri)
+                .scope(spec.getScopes())
+                .tokenUri(spec.getTokenUri())
+                .userInfoAuthenticationMethod(
                 toAuthenticationMethod(spec.getUserInfoAuthenticationMethod())
             )
-            .userInfoUri(spec.getUserInfoUri())
-            .providerConfigurationMetadata(
+                .userInfoUri(spec.getUserInfoUri())
+                .providerConfigurationMetadata(
                 defaultIfNull(spec.getConfigurationMetadata(), Map.of())
             )
-            .userNameAttributeName(spec.getUserNameAttributeName());
+                .userNameAttributeName(spec.getUserNameAttributeName());
     }
 
     Mono<Set<String>> fetchEnabledProviders() {
         return client.fetch(ConfigMap.class, SystemSetting.SYSTEM_CONFIG)
-            .map(configMap -> {
-                var authProvider = getAuthProvider(configMap);
-                return authProvider.getStates().stream()
-                    .filter(SystemSetting.AuthProviderState::isEnabled)
-                    .map(SystemSetting.AuthProviderState::getName)
-                    .collect(Collectors.toSet());
-            })
-            .defaultIfEmpty(Set.of());
+                .map(configMap -> {
+                    var authProvider = getAuthProvider(configMap);
+                    return authProvider.getStates().stream()
+                            .filter(SystemSetting.AuthProviderState::isEnabled)
+                            .map(SystemSetting.AuthProviderState::getName)
+                            .collect(Collectors.toSet());
+                })
+                .defaultIfEmpty(Set.of());
     }
 
     @NonNull
